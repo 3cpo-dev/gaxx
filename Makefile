@@ -24,7 +24,13 @@ test-integration: build
 test-e2e: build
 	./test/e2e_test.sh
 
-test-all: test-unit test-integration test-e2e
+test-monitoring: build
+	./test_monitoring.sh
+
+test-monitoring-full: build
+	./final_monitoring_demo.sh
+
+test-all: test-unit test-integration test-e2e test-monitoring
 
 lint:
 	go vet ./...

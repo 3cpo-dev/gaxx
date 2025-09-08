@@ -15,6 +15,7 @@ import (
 	lin "github.com/3cpo-dev/gaxx/internal/providers/linode"
 	localssh "github.com/3cpo-dev/gaxx/internal/providers/localssh"
 	vlt "github.com/3cpo-dev/gaxx/internal/providers/vultr"
+	"github.com/3cpo-dev/gaxx/internal/telemetry"
 )
 
 var (
@@ -101,13 +102,85 @@ func setupLogger() {
 // Main entry point
 func main() {
 	setupLogger()
+
+	// Initialize telemetry if enabled
+	setupTelemetry()
+	defer telemetry.Shutdown()
+
 	root := newRootCmd()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	root.SetContext(ctx)
+
+	// Record application start
+	telemetry.CounterGlobal("gaxx_app_starts", 1, map[string]string{
+		"version":   version,
+		"component": "cli",
+	})
+
 	if err := root.Execute(); err != nil {
+		telemetry.CounterGlobal("gaxx_app_errors", 1, map[string]string{
+			"error":     err.Error(),
+			"component": "cli",
+		})
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+// setupTelemetry initializes telemetry based on configuration
+func setupTelemetry() {
+	// Try to load config to get telemetry settings
+	cfg, err := core.LoadConfig("")
+	if err != nil {
+		// If config loading fails, disable telemetry
+		telemetry.InitGlobal(false, "")
+		return
+	}
+
+	// Set defaults if not specified
+	monitoringPort := cfg.Telemetry.MonitoringPort
+	if monitoringPort == 0 {
+		monitoringPort = 9090
+	}
+
+	telemetry.InitGlobal(cfg.Telemetry.Enabled, cfg.Telemetry.OTLPEndpoint)
+
+	// Configure metrics interval if specified
+	if cfg.Telemetry.MetricsInterval > 0 {
+		// TODO: Use MetricsInterval to configure flush frequency
+		log.Debug().Int("interval", cfg.Telemetry.MetricsInterval).Msg("Custom metrics interval configured")
+	}
+
+	if cfg.Telemetry.Enabled {
+		log.Info().
+			Bool("enabled", cfg.Telemetry.Enabled).
+			Str("otlp_endpoint", cfg.Telemetry.OTLPEndpoint).
+			Int("monitoring_port", monitoringPort).
+			Msg("Telemetry initialized")
+
+		// Start monitoring server in background if enabled
+		go startMonitoringServer(monitoringPort)
+	}
+}
+
+// startMonitoringServer starts the monitoring HTTP server
+func startMonitoringServer(port int) {
+	collector := telemetry.GetGlobal()
+	perfMon := telemetry.NewPerformanceMonitor(collector, true)
+	defer perfMon.Shutdown()
+
+	addr := fmt.Sprintf(":%d", port)
+	server := telemetry.NewMonitoringServer(addr, collector, perfMon)
+
+	// Register default health checks
+	for name, checkFn := range telemetry.DefaultHealthChecks() {
+		server.RegisterHealthCheck(name, checkFn)
+	}
+
+	log.Info().Int("port", port).Msg("Starting CLI monitoring server")
+	if err := server.Start(); err != nil && err.Error() != "http: Server closed" {
+		log.Error().Err(err).Msg("CLI monitoring server failed")
 	}
 }
 

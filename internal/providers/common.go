@@ -2,8 +2,8 @@ package providers
 
 type Config struct {
 	Providers struct {
-		Default      string `yaml:"default"`
-		Linode struct {
+		Default string `yaml:"default"`
+		Linode  struct {
 			Token  string   `yaml:"token"`
 			Region string   `yaml:"region"`
 			Type   string   `yaml:"type"`
@@ -38,7 +38,9 @@ type Config struct {
 		TimeoutSeconds int    `yaml:"timeout_seconds"`
 	} `yaml:"defaults"`
 	Telemetry struct {
-		Enabled      bool   `yaml:"enabled"`
-		OTLPEndpoint string `yaml:"otlp_endpoint"`
+		Enabled         bool   `yaml:"enabled"`
+		OTLPEndpoint    string `yaml:"otlp_endpoint"`
+		MonitoringPort  int    `yaml:"monitoring_port"`
+		MetricsInterval int    `yaml:"metrics_interval"`
 	} `yaml:"telemetry"`
 }

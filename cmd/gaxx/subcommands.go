@@ -18,6 +18,7 @@ import (
 	localssh "github.com/3cpo-dev/gaxx/internal/providers/localssh"
 	vlt "github.com/3cpo-dev/gaxx/internal/providers/vultr"
 	gssh "github.com/3cpo-dev/gaxx/internal/ssh"
+	"github.com/3cpo-dev/gaxx/internal/telemetry"
 	"github.com/3cpo-dev/gaxx/pkg/api"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -438,7 +439,19 @@ func loadTaskModule(path string) (*api.TaskSpec, error) {
 
 // executeTaskOnFleet executes a task across all nodes in the fleet
 func executeTaskOnFleet(ctx context.Context, nodes []prov.Node, task *api.TaskSpec, inputs []string, timeout, concurrency int) error {
+	// Start performance timing
+	taskStart := time.Now()
+	taskLabels := map[string]string{
+		"task":      task.Name,
+		"provider":  "unknown", // Will be set per node
+		"component": "task_execution",
+	}
+
 	fmt.Printf("Executing task '%s' on %d nodes\n", task.Name, len(nodes))
+
+	// Record task start
+	telemetry.CounterGlobal("gaxx_tasks_started", 1, taskLabels)
+	telemetry.GaugeGlobal("gaxx_task_nodes_total", float64(len(nodes)), taskLabels)
 
 	var inputChunks [][]string
 	if len(inputs) > 0 {
@@ -491,7 +504,8 @@ func executeTaskOnFleet(ctx context.Context, nodes []prov.Node, task *api.TaskSp
 
 	wg.Wait()
 
-	// Print summary
+	// Calculate final metrics
+	taskDuration := time.Since(taskStart)
 	successful := 0
 	failed := 0
 	for _, nodeResults := range results {
@@ -504,7 +518,26 @@ func executeTaskOnFleet(ctx context.Context, nodes []prov.Node, task *api.TaskSp
 		}
 	}
 
-	fmt.Printf("\nSummary: %d successful, %d failed\n", successful, failed)
+	// Record task completion metrics
+	telemetry.TimerGlobal("gaxx_task_duration", taskDuration, taskLabels)
+	telemetry.CounterGlobal("gaxx_task_executions_successful", float64(successful), taskLabels)
+	telemetry.CounterGlobal("gaxx_task_executions_failed", float64(failed), taskLabels)
+
+	// Calculate and record success rate
+	total := successful + failed
+	if total > 0 {
+		successRate := float64(successful) / float64(total) * 100
+		telemetry.GaugeGlobal("gaxx_task_success_rate_percent", successRate, taskLabels)
+	}
+
+	// Record completion
+	if failed == 0 {
+		telemetry.CounterGlobal("gaxx_tasks_completed_successfully", 1, taskLabels)
+	} else {
+		telemetry.CounterGlobal("gaxx_tasks_completed_with_failures", 1, taskLabels)
+	}
+
+	fmt.Printf("\nSummary: %d successful, %d failed (%.2fs total)\n", successful, failed, taskDuration.Seconds())
 
 	if failed > 0 {
 		fmt.Println("\nFailed outputs:")
@@ -529,17 +562,36 @@ type nodeResult struct {
 
 // executeOnNode executes a task on a single node
 func executeOnNode(ctx context.Context, node prov.Node, task *api.TaskSpec, chunk []string, timeout int) nodeResult {
+	nodeStart := time.Now()
+
 	// For demonstration, try agent first, fall back to SSH
 	result, err := executeViaAgent(ctx, node, task, chunk, timeout)
+
+	nodeLabels := map[string]string{
+		"node_ip":   node.IP,
+		"node_name": node.Name,
+		"task":      task.Name,
+		"component": "node_execution",
+	}
+
 	if err == nil {
+		// Record successful agent execution
+		telemetry.TimerGlobal("gaxx_node_execution_duration", time.Since(nodeStart), nodeLabels)
+		telemetry.CounterGlobal("gaxx_node_executions_successful", 1, nodeLabels)
 		return result
 	}
 
+	// Record agent failure and try fallback
+	telemetry.CounterGlobal("gaxx_agent_failures", 1, nodeLabels)
+
 	// Fallback to SSH execution (simplified for now)
+	telemetry.CounterGlobal("gaxx_node_executions_failed", 1, nodeLabels)
+	telemetry.TimerGlobal("gaxx_node_execution_duration", time.Since(nodeStart), nodeLabels)
+
 	return nodeResult{
 		ExitCode: 1,
 		Stderr:   fmt.Sprintf("Agent execution failed: %v", err),
-		Duration: 0,
+		Duration: time.Since(nodeStart).Milliseconds(),
 	}
 }
 
@@ -992,11 +1044,15 @@ func createDefaultConfig(sshDir, knownHostsPath string) prov.Config {
 			TimeoutSeconds: 300,
 		},
 		Telemetry: struct {
-			Enabled      bool   `yaml:"enabled"`
-			OTLPEndpoint string `yaml:"otlp_endpoint"`
+			Enabled         bool   `yaml:"enabled"`
+			OTLPEndpoint    string `yaml:"otlp_endpoint"`
+			MonitoringPort  int    `yaml:"monitoring_port"`
+			MetricsInterval int    `yaml:"metrics_interval"`
 		}{
-			Enabled:      false,
-			OTLPEndpoint: "",
+			Enabled:         false,
+			OTLPEndpoint:    "",
+			MonitoringPort:  9090,
+			MetricsInterval: 30,
 		},
 	}
 }
