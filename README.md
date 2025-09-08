@@ -67,8 +67,9 @@ Ensure the binary is on PATH:
 export PATH="$(go env GOPATH)/bin:$PATH"
 gaxx -h
 gaxx init
-Note: init currently runs but is a stub (“init not yet implemented”).
 ```
+Note: init currently runs but is a stub (“init not yet implemented”).
+
 
 1. Install (requires Go):
 ```bash
