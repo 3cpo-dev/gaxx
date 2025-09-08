@@ -75,6 +75,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newScanCmd())
 	cmd.AddCommand(newScpCmd())
 	cmd.AddCommand(newSSHCmd())
+	cmd.AddCommand(newCompletionCmd())
 	return cmd
 }
 
