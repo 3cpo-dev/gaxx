@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"time"
 
@@ -38,6 +39,16 @@ func (s *Server) routes(mux *http.ServeMux) {
 		})
 	})
 	mux.HandleFunc("/v0/exec", func(w http.ResponseWriter, r *http.Request) {
+		// Optional token-based auth via env var
+		if tok := os.Getenv("GAXX_AGENT_TOKEN"); tok != "" {
+			auth := r.Header.Get("Authorization")
+			x := r.Header.Get("X-Auth-Token")
+			if auth != "Bearer "+tok && x != tok {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+
 		requestStart := time.Now()
 		defer r.Body.Close()
 
