@@ -1,0 +1,10 @@
+name: dns_bruteforce
+description: Resolve potential subdomains for a root domain using a wordlist
+command: sh
+args: ["-c", "for s in $(cat {{ item }}); do dig +short \"$s.${domain}\"; done"]
+env: {}
+inputs:
+  - "${wordlists}"
+chunk_size: 1
+
+

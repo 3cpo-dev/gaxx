@@ -1,0 +1,10 @@
+name: port_scan
+description: Simple TCP connect scan using nc across targets and ports
+command: sh
+args: ["-c", "for t in $(cat {{ item }}); do for p in ${ports}; do (echo >/dev/tcp/$t/$p) >/dev/null 2>&1 && echo \"$t:$p open\" || true; done; done"]
+env: {ports: "80,443,8080"}
+inputs:
+  - "${targets}"
+chunk_size: 25
+
+

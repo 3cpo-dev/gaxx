@@ -1,0 +1,10 @@
+name: http_probe
+description: Perform HTTP GET probes against a list of targets
+command: curl
+args: ["-sS", "-o", "/dev/null", "-w", "%{http_code} %{time_total} %{url_effective}\n", "{{ item }}"]
+env: {}
+inputs:
+  - "${targets}"
+chunk_size: 50
+
+

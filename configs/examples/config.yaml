@@ -1,0 +1,30 @@
+providers:
+  default: linode
+  linode:
+    token: "..."
+    region: "us-east"
+    type: "g6-nanode-1"
+    image: "linode/ubuntu22.04"
+    tags: ["gaxx"]
+  vultr:
+    token: "..."
+    region: "ewr"
+    plan: "vc2-1c-1gb"
+    os_id: "477" # Ubuntu 22.04
+    tags: ["gaxx"]
+  localssh:
+    hosts:
+      - {name: "lab-1", ip: "192.0.2.11", user: "gx", key_path: "~/.ssh/id_ed25519", port: 22}
+ssh:
+  key_dir: ~/.config/gaxx/ssh
+  known_hosts: ~/.config/gaxx/known_hosts
+defaults:
+  user: gx
+  ssh_port: 22
+  retries: 3
+  timeout_seconds: 600
+telemetry:
+  enabled: false
+  otlp_endpoint: ""
+
+
