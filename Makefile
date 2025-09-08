@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 BIN_DIR := bin
 
-.PHONY: all build test lint tidy clean release-snapshot generate migrate
+.PHONY: all build test test-unit test-integration test-e2e lint tidy clean release-snapshot generate migrate
 
 all: build
 
@@ -13,8 +13,18 @@ build:
 	CGO_ENABLED=0 go build -o $(BIN_DIR)/gaxx ./cmd/gaxx
 	CGO_ENABLED=0 go build -o $(BIN_DIR)/gaxx-agent ./cmd/gaxx-agent
 
-test:
-	go test ./...
+test: test-unit
+
+test-unit:
+	go test ./internal/... ./pkg/...
+
+test-integration: build
+	go test -v -run TestFullWorkflow ./integration_test.go
+
+test-e2e: build
+	./test/e2e_test.sh
+
+test-all: test-unit test-integration test-e2e
 
 lint:
 	go vet ./...
