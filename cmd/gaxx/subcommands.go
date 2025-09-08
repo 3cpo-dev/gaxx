@@ -584,15 +584,15 @@ func executeOnNode(ctx context.Context, node prov.Node, task *api.TaskSpec, chun
 	// Record agent failure and try fallback
 	telemetry.CounterGlobal("gaxx_agent_failures", 1, nodeLabels)
 
-	// Fallback to SSH execution (simplified for now)
-	telemetry.CounterGlobal("gaxx_node_executions_failed", 1, nodeLabels)
-	telemetry.TimerGlobal("gaxx_node_execution_duration", time.Since(nodeStart), nodeLabels)
-
-	return nodeResult{
-		ExitCode: 1,
-		Stderr:   fmt.Sprintf("Agent execution failed: %v", err),
-		Duration: time.Since(nodeStart).Milliseconds(),
+	// Fallback to SSH execution
+	sshRes := executeViaSSH(ctx, node, task, chunk, timeout)
+	if sshRes.ExitCode == 0 {
+		telemetry.CounterGlobal("gaxx_node_executions_successful", 1, nodeLabels)
+	} else {
+		telemetry.CounterGlobal("gaxx_node_executions_failed", 1, nodeLabels)
 	}
+	telemetry.TimerGlobal("gaxx_node_execution_duration", time.Since(nodeStart), nodeLabels)
+	return sshRes
 }
 
 // executeViaAgent executes via the gaxx-agent API
@@ -643,6 +643,10 @@ func executeViaAgent(ctx context.Context, node prov.Node, task *api.TaskSpec, ch
 		return nodeResult{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if tok := os.Getenv("GAXX_AGENT_TOKEN"); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+		req.Header.Set("X-Auth-Token", tok)
+	}
 
 	client := &http.Client{Timeout: time.Duration(timeout+10) * time.Second}
 	resp, err := client.Do(req)
@@ -666,6 +670,67 @@ func executeViaAgent(ctx context.Context, node prov.Node, task *api.TaskSpec, ch
 		Stderr:   execResp.Stderr,
 		Duration: execResp.Duration,
 	}, nil
+}
+
+// executeViaSSH executes a task using SSH as a fallback
+func executeViaSSH(ctx context.Context, node prov.Node, task *api.TaskSpec, chunk []string, timeout int) nodeResult {
+	cfg, _ := core.LoadConfig("")
+	user := node.SSHUser
+	if user == "" {
+		user = cfg.Defaults.User
+	}
+	port := node.SSHPort
+	if port == 0 {
+		port = cfg.Defaults.SSHPort
+	}
+	keyPath := filepath.Join(cfg.SSH.KeyDir, "id_ed25519")
+	signer, err := gssh.LoadPrivateKeySigner(keyPath)
+	if err != nil {
+		return nodeResult{ExitCode: 1, Stderr: fmt.Sprintf("ssh key: %v", err)}
+	}
+	kh, _ := gssh.LoadKnownHostsCallback(cfg.SSH.KnownHosts)
+	c := &gssh.Client{Addr: fmt.Sprintf("%s:%d", node.IP, port), User: user, Signer: signer, KnownHosts: kh, Timeout: time.Duration(timeout) * time.Second, Retries: cfg.Defaults.Retries, Backoff: 500 * time.Millisecond}
+
+	// Build shell with env exports and optional chunk tmp file
+	var exports []string
+	for k, v := range task.Env {
+		exports = append(exports, fmt.Sprintf("export %s=%q", k, v))
+	}
+	cmd := task.Command
+	args := append([]string{}, task.Args...)
+	var pre []string
+	if len(chunk) > 0 {
+		tmp := fmt.Sprintf("/tmp/gaxx-chunk-%d", time.Now().UnixNano())
+		for i := range args {
+			args[i] = strings.ReplaceAll(args[i], "{{ item }}", tmp)
+		}
+		chunkData := strings.Join(chunk, "\n")
+		pre = append(pre, fmt.Sprintf("printf %q > %s", chunkData+"\n", tmp))
+	}
+	joined := strings.Join(exports, "; ")
+	if joined != "" {
+		joined += "; "
+	}
+	var quoted []string
+	for _, a := range args {
+		quoted = append(quoted, fmt.Sprintf("%q", a))
+	}
+	full := strings.TrimSpace(strings.Join(pre, "; "))
+	if full != "" {
+		full += "; "
+	}
+	shell := fmt.Sprintf("%s%s %s", joined, cmd, strings.Join(quoted, " "))
+	if len(pre) > 0 {
+		shell = full + shell
+	}
+
+	ctx2, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+	stdout, _, err := c.RunCommand(ctx2, "sh -lc "+fmt.Sprintf("%q", shell))
+	if err != nil {
+		return nodeResult{ExitCode: 1, Stderr: err.Error(), Stdout: stdout}
+	}
+	return nodeResult{ExitCode: 0, Stdout: stdout}
 }
 
 // loadInputFiles loads and combines multiple input files
