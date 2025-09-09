@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -116,118 +117,18 @@ func (ms *MonitoringServer) metricsHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// dashboardHandler provides a simple HTML dashboard
-func (ms *MonitoringServer) dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	html := `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Gaxx Monitoring Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .card { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .status-healthy { color: #28a745; }
-        .status-degraded { color: #ffc107; }
-        .status-unhealthy { color: #dc3545; }
-        .metric { margin: 5px 0; padding: 10px; background: #f8f9fa; border-radius: 4px; }
-        .metric-name { font-weight: bold; color: #495057; }
-        .metric-value { float: right; color: #007bff; }
-        .refresh-btn { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
-        .refresh-btn:hover { background: #0056b3; }
-        h1 { color: #343a40; }
-        h2 { color: #495057; border-bottom: 2px solid #dee2e6; padding-bottom: 10px; }
-    </style>
-    <script>
-        function refreshData() {
-            location.reload();
-        }
-        
-        async function loadMetrics() {
-            try {
-                const response = await fetch('/api/metrics');
-                const metrics = await response.json();
-                updateMetricsDisplay(metrics);
-            } catch (error) {
-                console.error('Failed to load metrics:', error);
-            }
-        }
-        
-        async function loadHealth() {
-            try {
-                const response = await fetch('/api/health');
-                const health = await response.json();
-                updateHealthDisplay(health);
-            } catch (error) {
-                console.error('Failed to load health:', error);
-            }
-        }
-        
-        function updateMetricsDisplay(metrics) {
-            const container = document.getElementById('metrics-container');
-            container.innerHTML = '';
-            
-            metrics.forEach(metric => {
-                const div = document.createElement('div');
-                div.className = 'metric';
-                div.innerHTML = '<span class="metric-name">' + metric.name + '</span><span class="metric-value">' + metric.value + '</span>';
-                container.appendChild(div);
-            });
-        }
-        
-        function updateHealthDisplay(health) {
-            const container = document.getElementById('health-container');
-            const statusClass = 'status-' + health.status;
-            container.innerHTML = '<h3 class="' + statusClass + '">System Status: ' + health.status.toUpperCase() + '</h3>';
-            
-            health.checks.forEach(check => {
-                const div = document.createElement('div');
-                div.className = 'metric';
-                div.innerHTML = '<span class="metric-name ' + 'status-' + check.status + '">' + check.name + '</span><span class="metric-value">' + check.status + '</span>';
-                container.appendChild(div);
-            });
-        }
-        
-        setInterval(() => {
-            loadMetrics();
-            loadHealth();
-        }, 5000);
-        
-        window.onload = () => {
-            loadMetrics();
-            loadHealth();
-        };
-    </script>
-</head>
-<body>
-    <div class="container">
-        <h1>🚀 Gaxx Monitoring Dashboard</h1>
-        
-        <div class="card">
-            <h2>System Health</h2>
-            <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
-            <div id="health-container">Loading...</div>
-        </div>
-        
-        <div class="card">
-            <h2>Performance Metrics</h2>
-            <div id="metrics-container">Loading...</div>
-        </div>
-        
-        <div class="card">
-            <h2>Quick Actions</h2>
-            <p>
-                <a href="/metrics" target="_blank">📊 Raw Metrics (Prometheus format)</a><br>
-                <a href="/api/health" target="_blank">🏥 Health API</a><br>
-                <a href="/api/metrics" target="_blank">📈 Metrics API</a>
-            </p>
-        </div>
-    </div>
-</body>
-</html>`
+//go:embed static
+var staticFS embed.FS
 
+// dashboardHandler serves the embedded dashboard HTML
+func (ms *MonitoringServer) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
+	data, err := staticFS.ReadFile("static/dashboard.html")
+	if err != nil {
+		http.Error(w, "dashboard not found", http.StatusNotFound)
+		return
+	}
+	w.Write(data)
 }
 
 // apiMetricsHandler provides JSON metrics API
