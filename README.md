@@ -24,13 +24,14 @@ Process 1 million URLs: Gaxx spins up hundreds of VPS instances, deploys agents,
 
 ## Features
 - **Fleet Management**: Create, list, and delete fleets with multiple providers
-- **Agent-Based Execution**: Lightweight HTTP agent for command execution and monitoring
+- **Agent-Based Execution**: Lightweight HTTP agent with optional mTLS authentication
 - **Task Modules**: YAML-based task definitions with variable substitution and chunking
-- **File Upload**: Efficient file transfer to nodes before task execution
+- **SFTP File Transfer**: Secure file upload with SHA256 checksum verification
 - **Parallel Processing**: Configurable concurrency with intelligent load distribution
-- **Monitoring & Telemetry**: Built-in performance monitoring, health checks, and profiling
-- **Security**: SSH key-only authentication, strict host management, non-root execution
-- **Multi-Provider**: Support for Linode, Vultr, and local SSH hosts
+- **OTLP Telemetry**: OpenTelemetry-compatible metrics export for observability
+- **Cloud Provider Resilience**: Retry logic, rate limiting, and validation
+- **Security**: SSH keys, mTLS authentication, strict host management, non-root execution
+- **Multi-Provider**: Support for Linode, Vultr, and local SSH hosts with production hardening
 - **Structured Logging**: JSON-based logging with configurable levels
 
 ## Commands
@@ -95,9 +96,30 @@ providers:
         key_path: ~/.config/gaxx/ssh/id_ed25519
         port: 22
   # Add Linode/Vultr credentials in secrets.env
+  
 telemetry:
   enabled: true
   monitoring_port: 9090
+  profiling_port: 6060
+  otlp_endpoint: "http://otel-collector:4318/v1/metrics"
+  
+security:
+  require_mtls: false  # Set to true for production
+```
+
+### 4. Set Environment Variables
+For production deployments, configure security and cloud provider access:
+```bash
+# Agent Security (optional)
+export GAXX_AGENT_TOKEN="your-secret-token"           # Bearer token auth
+export GAXX_AGENT_TLS_CERT="/path/to/server.crt"      # Server certificate
+export GAXX_AGENT_TLS_KEY="/path/to/server.key"       # Server private key
+export GAXX_AGENT_CLIENT_CA="/path/to/client-ca.crt"  # Client CA for mTLS
+export GAXX_AGENT_REQUIRE_MTLS="true"                 # Enforce mTLS
+
+# Cloud Provider Credentials
+export LINODE_TOKEN="your-linode-token"
+export VULTR_API_KEY="your-vultr-key"
 ```
 
 ## Quick Examples
@@ -122,22 +144,67 @@ echo "127.0.0.1" > hosts.txt
 ./bin/gaxx run --name local-test --module modules/port_scan.yaml --inputs hosts.txt --env ports=22,80,443
 ```
 
-### File Upload and Processing
+### SFTP File Upload and Processing
 ```bash
-# Upload files and run tasks
+# Upload large files with checksum verification (SFTP)
 ./bin/gaxx scan --name local-test --module modules/dns_bruteforce.yaml \
-  --upload wordlist.txt --inputs wordlist.txt --env domain=example.com
+  --upload large-wordlist.txt --inputs large-wordlist.txt --env domain=example.com
+
+# Files are automatically verified with SHA256 checksums
+# Failed transfers are automatically retried or cleaned up
 ```
 
-### Monitoring and Health
+### Cloud Fleet Operations
 ```bash
-# Start agent with monitoring
+# Create Linode fleet with hardened providers
+./bin/gaxx spawn --provider linode --count 10 --region us-east --name test-fleet
+
+# Automatic cloud-init deployment with agent installation
+# Built-in retry logic, rate limiting, and validation
+
+# Run tasks across cloud fleet
+./bin/gaxx run --name test-fleet --module modules/port_scan.yaml --inputs targets.txt
+
+# Clean up with resilient deletion
+./bin/gaxx delete --name test-fleet
+```
+
+### Production Security Setup
+```bash
+# Generate mTLS certificates for production
+openssl genrsa -out ca-key.pem 4096
+openssl req -new -x509 -days 365 -key ca-key.pem -out ca.pem
+openssl genrsa -out server-key.pem 4096
+openssl req -new -key server-key.pem -out server.csr
+openssl x509 -req -days 365 -in server.csr -CA ca.pem -CAkey ca-key.pem -out server.pem
+
+# Start agent with mTLS
+export GAXX_AGENT_TLS_CERT=server.pem
+export GAXX_AGENT_TLS_KEY=server-key.pem
+export GAXX_AGENT_CLIENT_CA=ca.pem
+export GAXX_AGENT_REQUIRE_MTLS=true
+./bin/gaxx-agent
+
+# Client connections now require valid certificates
+```
+
+### Advanced Monitoring and Observability
+```bash
+# Start with OTLP export to observability stack
+export GAXX_OTLP_ENDPOINT="http://jaeger:14268/api/traces"
 ./bin/gaxx-agent &
 
-# Check health and metrics
-curl http://localhost:9091/health
-curl http://localhost:9091/metrics
-curl http://localhost:6060/debug/stats
+# Check comprehensive health and metrics
+curl http://localhost:9091/health          # Health status
+curl http://localhost:9091/metrics         # Prometheus metrics  
+curl http://localhost:9091/dashboard       # Web dashboard
+curl http://localhost:6060/debug/pprof/    # Performance profiling
+
+# Metrics include:
+# - Request latency and throughput
+# - System resource usage
+# - Agent connection status
+# - Task execution statistics
 ```
 
 ## Task Modules
@@ -176,31 +243,35 @@ Create your own YAML modules with:
 - **Modules**: YAML task definitions with templating and chunking
 
 ### Communication
-- **Agent API**: HTTP endpoints for command execution (`/v0/exec`) and health (`/v0/heartbeat`)
-- **Monitoring**: Health checks, Prometheus metrics, and pprof profiling
+- **Agent API**: HTTP/HTTPS endpoints with optional mTLS authentication
+- **SFTP Transfer**: Secure file upload with integrity verification
+- **OTLP Export**: OpenTelemetry-compatible metrics for observability stacks
 - **SSH Fallback**: Direct SSH execution when agents unavailable
 
 ## Provider Status
 
-| Provider | Status | Description |
-|----------|--------|-------------|
-| **LocalSSH** | ✅ **Implemented** | Connect to existing SSH hosts |
-| **Linode** | 🚧 **Stub** | Cloud provider integration planned |
-| **Vultr** | 🚧 **Stub** | Cloud provider integration planned |
+| Provider | Status | Features |
+|----------|--------|----------|
+| **LocalSSH** | ✅ | SSH hosts, SFTP transfer, agent deployment |
+| **Linode** | ✅ | Fleet creation, cloud-init, retry logic, rate limiting |
+| **Vultr** | ✅ | Fleet creation, cloud-init, retry logic, rate limiting |
 
 ## Security Features
-- **SSH Key Authentication**: Ed25519 keys with strict host verification
-- **Agent Security**: HTTP-only agent with command execution isolation
+- **mTLS Authentication**: Optional mutual TLS for agent communication
+- **SSH Key Authentication**: Ed25519 keys with strict host verification  
+- **Bearer Token Auth**: Optional token-based agent authentication
+- **SFTP with Integrity**: File transfers with SHA256 checksum verification
 - **Non-root Execution**: Default user `gx` with minimal privileges
 - **Network Security**: Known hosts management and connection validation
-- **Audit Trail**: Comprehensive logging of all operations
+- **Audit Trail**: Comprehensive logging of all operations and security events
 
 ## Performance & Monitoring
-- **Real-time Metrics**: Memory, CPU, goroutines, and custom business metrics
-- **Health Checks**: Automated health monitoring for all components
-- **Profiling**: Built-in pprof endpoints for performance analysis
-- **Telemetry**: OTLP-compatible metrics export (configurable)
-- **Dashboard**: Web interface for metrics and health status
+- **OTLP Export**: OpenTelemetry Protocol-compatible metrics for Jaeger, Prometheus, etc.
+- **Real-time Metrics**: Memory, CPU, goroutines, request latency, and business metrics
+- **Health Checks**: Automated health monitoring with detailed status reporting
+- **Performance Profiling**: Built-in pprof endpoints for CPU, memory, and goroutine analysis
+- **Web Dashboard**: Real-time web interface for metrics visualization and health status
+- **Cloud Provider Resilience**: Retry logic, rate limiting, and transient error handling
 
 ## Development
 
@@ -233,15 +304,60 @@ cmd/                    # Main binaries
 └── gaxx-agent/        # Node agent
 
 internal/              # Core implementation
-├── agent/             # Agent HTTP server
-├── core/              # Business logic
-├── providers/         # Cloud provider interfaces
-├── ssh/               # SSH utilities
-└── telemetry/         # Monitoring & metrics
+├── agent/             # Agent HTTP server with mTLS support
+├── core/              # Business logic and SFTP transfers
+├── providers/         # Cloud provider interfaces with resilience
+├── ssh/               # SSH utilities and key management
+└── telemetry/         # OTLP monitoring & metrics
 
 modules/               # Pre-built task modules
 pkg/api/              # Public API types
 ```
+
+## Production Deployment
+
+### Environment Variables Reference
+
+#### Agent Security
+```bash
+# Bearer token authentication
+GAXX_AGENT_TOKEN="your-secret-token"
+
+# TLS/mTLS configuration  
+GAXX_AGENT_TLS_CERT="/path/to/server.crt"      # Server certificate
+GAXX_AGENT_TLS_KEY="/path/to/server.key"       # Server private key
+GAXX_AGENT_CLIENT_CA="/path/to/client-ca.crt"  # Client CA for mTLS
+GAXX_AGENT_REQUIRE_MTLS="true"                 # Enforce client certificates
+```
+
+#### Telemetry Configuration
+```bash
+# OTLP export endpoint
+GAXX_OTLP_ENDPOINT="http://otel-collector:4318/v1/metrics"
+
+# Alternative observability endpoints
+GAXX_OTLP_ENDPOINT="http://jaeger:14268/api/traces"
+GAXX_OTLP_ENDPOINT="http://prometheus:9090/api/v1/write"
+```
+
+#### Cloud Provider Credentials
+```bash
+# Linode API access
+LINODE_TOKEN="your-linode-personal-access-token"
+
+# Vultr API access  
+VULTR_API_KEY="your-vultr-api-key"
+```
+
+### Production Checklist
+- [ ] Generate and configure mTLS certificates
+- [ ] Set strong bearer tokens for agent authentication
+- [ ] Configure OTLP endpoints for observability stack
+- [ ] Set up cloud provider credentials securely
+- [ ] Enable comprehensive logging and monitoring
+- [ ] Test retry logic and error handling
+- [ ] Verify SFTP integrity checks are working
+- [ ] Configure proper network security and firewalls
 
 ## License
 Apache-2.0
