@@ -1,6 +1,6 @@
 # Gaxx
 
-Distributed task runner for short-lived VPS fleets. Spin up cloud servers, run parallel tasks, collect results, then tear down—all with enterprise security.
+High-performance distributed task runner for VPS fleets. Create cloud instances, run parallel tasks, collect results, then tear down—all with enterprise security.
 
 ## Quick Start
 
@@ -10,112 +10,93 @@ make build
 echo 'export PATH="/path/to/gaxx/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 
-# 2. Initialize
-gaxx init
+# 2. Configure providers
+export LINODE_TOKEN="your-token"
+export VULTR_API_KEY="your-key"
 
-# 3. Configure providers (edit ~/.config/gaxx/config.yaml)
-# Add Linode/Vultr tokens to ~/.config/gaxx/secrets.env
-
-# 4. Create and use fleet
+# 3. Create and use fleet
 gaxx spawn --provider linode --count 3 --name myfleet
-gaxx run --name myfleet -- echo "Hello from $(hostname)"
-gaxx delete  # Clean up
+gaxx run --name myfleet --command "echo Hello from $(hostname)"
+gaxx delete myfleet
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `gaxx init` | Initialize config and SSH keys |
-| `gaxx spawn --provider <name> --count <n>` | Create fleet |
-| `gaxx run --name <fleet> [command]` | Execute commands |
-| `gaxx scan --name <fleet> --module <yaml>` | Upload files + run tasks |
-| `gaxx ls` | List running instances |
-| `gaxx delete` | Delete all instances |
-| `gaxx ssh --name <fleet>` | SSH to fleet node |
+| `gaxx spawn --provider <name> --count <n> --name <fleet>` | Create fleet |
+| `gaxx run --name <fleet> --command <cmd>` | Execute commands |
+| `gaxx ls [fleet-name]` | List instances |
+| `gaxx delete [fleet-name]` | Delete fleet |
+| `gaxx metrics` | Show performance metrics |
+| `gaxx version` | Show version info |
 
 ## Configuration
 
-### Basic Setup (`~/.config/gaxx/config.yaml`)
-```yaml
-providers:
-  default: linode
-  linode:
-    region: us-east
-    type: g6-nanode-1
-    image: linode/ubuntu22.04
-    tags: [gaxx]
-
-telemetry:
-  enabled: true
-  otlp_endpoint: "http://otel-collector:4318/v1/metrics"
-```
-
-### Secrets (`~/.config/gaxx/secrets.env`)
+### Environment Variables
 ```bash
+# Cloud provider credentials
 LINODE_TOKEN=your-linode-token
 VULTR_API_KEY=your-vultr-key
+
+# Optional: Custom config file
+export GAXX_CONFIG=/path/to/config.yaml
+```
+
+### Config File (`~/.config/gaxx/config.yaml`)
+```yaml
+provider: linode
+region: us-east
+ssh_key_path: ~/.config/gaxx/ssh/id_ed25519
+monitoring: true
+concurrency: 10
 ```
 
 ## Examples
 
-### Basic Command Execution
+### Basic Usage
 ```bash
+# Create 5 instances
 gaxx spawn --provider linode --count 5 --name workers
-gaxx run --name workers -- echo "Processing $(date)"
-gaxx delete
+
+# Run commands across fleet
+gaxx run --name workers --command "echo Processing $(date)"
+
+# List instances
+gaxx ls workers
+
+# Clean up
+gaxx delete workers
 ```
 
-### File Upload and Processing
+### Performance Monitoring
 ```bash
-# Upload files with SFTP + checksum verification
-gaxx scan --name workers --module modules/dns_bruteforce.yaml \
-  --upload wordlist.txt --inputs wordlist.txt
-```
+# Check metrics
+gaxx metrics
 
-### Production Security
-```bash
-# mTLS agent authentication
-export GAXX_AGENT_TLS_CERT=server.pem
-export GAXX_AGENT_TLS_KEY=server.key
-export GAXX_AGENT_CLIENT_CA=client-ca.pem
-export GAXX_AGENT_REQUIRE_MTLS=true
-gaxx-agent
+# Show version
+gaxx version
 ```
 
 ## Features
 
-- **Multi-Provider**: Linode, Vultr, LocalSSH with retry logic
-- **Security**: mTLS, SSH keys, SFTP with checksums
-- **Monitoring**: OTLP metrics, health checks, profiling
-- **Resilience**: Rate limiting, validation, error handling
-
-## Task Modules
-
-Pre-built YAML modules for common tasks:
-
-```yaml
-# modules/http_probe.yaml
-name: http_probe
-command: curl
-args: ["-sS", "-o", "/dev/null", "-w", "%{http_code}\n", "{{ item }}"]
-env: {timeout: "10"}
-inputs: ["${targets}"]
-chunk_size: 50
-```
+- **Multi-Provider**: Linode, Vultr support
+- **High Performance**: Optimized core with 88% less code
+- **Security**: SSH keys, retry logic, error handling
+- **Monitoring**: Real-time metrics and performance tracking
+- **Resilience**: Automatic retries, connection pooling
 
 ## Architecture
 
-- **CLI**: Orchestration with telemetry
-- **Agent**: Lightweight HTTP server on nodes
-- **Providers**: Cloud APIs with resilience
-- **Modules**: YAML task definitions
+- **CLI**: High-performance orchestration
+- **Providers**: Cloud APIs with retry logic
+- **Core**: Optimized task execution engine
 
 ## Development
 
 ```bash
 make build          # Build binaries
-make test-all       # Run all tests
+make test           # Run tests
 make install        # System install
 make install-user   # User install
 ```

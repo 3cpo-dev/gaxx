@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -192,7 +193,7 @@ func (ms *MonitoringServer) Start() error {
 // Shutdown gracefully shuts down the monitoring server
 func (ms *MonitoringServer) Shutdown() error {
 	if ms.server != nil {
-		return ms.server.Shutdown(nil)
+		return ms.server.Shutdown(context.TODO())
 	}
 	return nil
 }
