@@ -1,10 +1,7 @@
 package telemetry
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"net/http"
 	"sync"
 	"time"
 
@@ -185,34 +182,10 @@ func (c *Collector) FlushMetrics() error {
 	return nil
 }
 
-// sendToOTLP sends metrics to OpenTelemetry endpoint
+// sendToOTLP sends metrics to OpenTelemetry endpoint using proper OTLP format
 func (c *Collector) sendToOTLP(metrics []Metric) error {
-	payload := map[string]interface{}{
-		"resource": map[string]string{
-			"service.name": "gaxx",
-		},
-		"metrics":   metrics,
-		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest("POST", c.otlpEndpoint, bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		log.Warn().Int("status", resp.StatusCode).Msg("OTLP endpoint returned non-2xx")
-	}
-	return nil
+	exporter := NewOTLPExporter(c.otlpEndpoint)
+	return exporter.Export(metrics)
 }
 
 // periodicFlush flushes metrics every 30 seconds

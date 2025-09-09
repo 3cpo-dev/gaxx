@@ -840,34 +840,18 @@ func uploadFilesToFleet(ctx context.Context, nodes []prov.Node, files []string, 
 	return nil
 }
 
-// uploadFilesToNode uploads files to a single node using SCP
+// uploadFilesToNode uploads files to a single node using SFTP with checksum verification
 func uploadFilesToNode(ctx context.Context, node prov.Node, files []string, remoteDir string, cfg prov.Config) error {
-	// This is a simplified implementation using the agent's exec endpoint
-	// In a real implementation, you'd use SCP/SFTP
+	transfer := core.NewFileTransfer(cfg)
 
-	// Create remote directory
-	createDirCmd := fmt.Sprintf("mkdir -p %s", remoteDir)
-	if err := executeSimpleCommand(ctx, node, createDirCmd); err != nil {
-		return fmt.Errorf("create remote dir: %w", err)
-	}
-
-	// For each file, read content and write to remote
+	// Build file mapping
+	fileMap := make(map[string]string)
 	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return fmt.Errorf("read local file %s: %w", file, err)
-		}
-
-		// Use base64 encoding to safely transfer binary files
-		remotePath := fmt.Sprintf("%s/%s", remoteDir, file)
-		writeCmd := fmt.Sprintf("echo %q | base64 -d > %s", content, remotePath)
-
-		if err := executeSimpleCommand(ctx, node, writeCmd); err != nil {
-			return fmt.Errorf("write remote file %s: %w", remotePath, err)
-		}
+		remotePath := fmt.Sprintf("%s/%s", remoteDir, filepath.Base(file))
+		fileMap[file] = remotePath
 	}
 
-	return nil
+	return transfer.TransferFiles(ctx, node, fileMap)
 }
 
 // executeSimpleCommand executes a simple command on a node via agent

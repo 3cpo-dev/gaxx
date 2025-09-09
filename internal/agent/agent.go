@@ -123,17 +123,19 @@ func (s *Server) routes(mux *http.ServeMux) {
 	})
 }
 
-// ListenAndServe starts the server
+// ListenAndServe starts the server with optional TLS/mTLS
 func (s *Server) ListenAndServe(addr string) error {
+	// Check for mTLS configuration
+	mtlsConfig := LoadMTLSConfig()
+
+	if mtlsConfig.ServerCert != "" && mtlsConfig.ServerKey != "" {
+		return s.ListenAndServeTLS(addr, mtlsConfig)
+	}
+
+	// Fallback to plain HTTP
 	mux := http.NewServeMux()
 	s.routes(mux)
 	s.srv = &http.Server{Addr: addr, Handler: mux}
-	// Optional TLS
-	cert := os.Getenv("GAXX_AGENT_TLS_CERT")
-	key := os.Getenv("GAXX_AGENT_TLS_KEY")
-	if cert != "" && key != "" {
-		return s.srv.ListenAndServeTLS(cert, key)
-	}
 	return s.srv.ListenAndServe()
 }
 

@@ -15,9 +15,19 @@ import (
 	gssh "github.com/3cpo-dev/gaxx/internal/ssh"
 )
 
-type Provider struct{ cfg prov.Config }
+type Provider struct {
+	cfg       prov.Config
+	client    *prov.RetryableHTTPClient
+	validator *prov.CloudProviderValidator
+}
 
-func New(cfg prov.Config) *Provider { return &Provider{cfg: cfg} }
+func New(cfg prov.Config) *Provider {
+	return &Provider{
+		cfg:       cfg,
+		client:    prov.NewRetryableHTTPClient(30*time.Second, 2.0), // 2 req/sec for Linode
+		validator: prov.NewCloudProviderValidator(),
+	}
+}
 
 func (p *Provider) Name() string { return "linode" }
 
