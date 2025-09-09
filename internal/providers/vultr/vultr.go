@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -153,7 +154,10 @@ func (p *Provider) doJSON(ctx context.Context, token, method, url string, body i
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 && method != http.MethodDelete {
-		return fmt.Errorf("vultr api status %d", resp.StatusCode)
+		// Read the response body for more detailed error information
+		var errorBody []byte
+		errorBody, _ = io.ReadAll(resp.Body)
+		return fmt.Errorf("vultr api status %d: %s", resp.StatusCode, string(errorBody))
 	}
 	if out != nil {
 		dec := json.NewDecoder(resp.Body)

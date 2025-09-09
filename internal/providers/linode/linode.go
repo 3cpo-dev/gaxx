@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -77,6 +78,11 @@ func randPass() string {
 }
 
 func (p *Provider) CreateFleet(ctx context.Context, req prov.CreateFleetRequest) (*prov.Fleet, error) {
+	// Validate request
+	if err := p.validator.ValidateCreateRequest("linode", req); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
 	tok, err := p.token()
 	if err != nil {
 		return nil, err
@@ -85,15 +91,36 @@ func (p *Provider) CreateFleet(ctx context.Context, req prov.CreateFleetRequest)
 	typeID := firstNonEmpty(req.Size, p.cfg.Providers.Linode.Type)
 	image := firstNonEmpty(req.Image, p.cfg.Providers.Linode.Image)
 	user := firstNonEmpty(req.SSHUser, p.cfg.Defaults.User)
+
+	// Validate required fields
+	if region == "" {
+		return nil, fmt.Errorf("region is required")
+	}
+	if typeID == "" {
+		return nil, fmt.Errorf("type/size is required")
+	}
+	if image == "" {
+		return nil, fmt.Errorf("image is required")
+	}
+
 	sshKeyPath := p.cfg.SSH.KeyDir + "/id_ed25519"
 	signer, err := gssh.LoadPrivateKeySigner(sshKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("load ssh key: %w", err)
 	}
 	pubAuth := string(gssh.MarshalAuthorized(signer))
+	pubAuth = strings.TrimSpace(pubAuth) // Remove any trailing whitespace
+
 	userData := prov.CloudInitUserData(user, pubAuth, "https://example.com/gaxx-agent")
 	encodedUserData := base64.StdEncoding.EncodeToString([]byte(userData))
-	tags := append([]string{"gaxx"}, p.cfg.Providers.Linode.Tags...)
+
+	// Build tags, ensuring no duplicates
+	tags := []string{"gaxx"}
+	for _, tag := range p.cfg.Providers.Linode.Tags {
+		if tag != "gaxx" { // Avoid duplicate "gaxx" tag
+			tags = append(tags, tag)
+		}
+	}
 
 	fleet := &prov.Fleet{Name: req.Name}
 	for i := 0; i < max(1, req.Count); i++ {
@@ -186,14 +213,16 @@ func (p *Provider) doJSON(ctx context.Context, token, method, url string, body i
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 && method != http.MethodDelete {
-		return fmt.Errorf("linode api status %d", resp.StatusCode)
+		// Read the response body for more detailed error information
+		var errorBody []byte
+		errorBody, _ = io.ReadAll(resp.Body)
+		return fmt.Errorf("linode api status %d: %s", resp.StatusCode, string(errorBody))
 	}
 	if out != nil {
 		dec := json.NewDecoder(resp.Body)
