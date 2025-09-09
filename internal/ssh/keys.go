@@ -22,16 +22,15 @@ func GenerateEd25519Keypair(privateKeyPath string) (publicAuthorized string, err
 		return "", fmt.Errorf("signer: %w", err)
 	}
 
-	// Marshal private key as PEM (openssh format is fine too; we choose PEM for readability)
-	// Note: ed25519 private keys are raw; store as OPENSSH private key using x/crypto/ssh Marshal.
-	// However, to keep dependencies minimal, write in OpenSSH format via MarshalAuthorizedKey for public,
-	// and write private using PEM with a simple header.
-	pemBlock := &pem.Block{Type: "OPENSSH PRIVATE KEY", Bytes: xssh.MarshalAuthorizedKey(signer.PublicKey())}
-	// The above isn't a real private key serialization; to avoid confusion, write using os.WriteFile of ssh.MarshalED25519PrivateKey when available.
-	// As fallback, store using golang.org/x/crypto/ssh for private key in OpenSSH new format is non-trivial.
-	// Simpler: write using ssh.MarshalAuthorizedKey for public only and encode private using x/crypto/ssh.MarshalED25519PrivateKey if added.
-	// For portability here, write raw private key bytes with a header comment. This is acceptable for initial scaffold and tests.
-	if err := os.WriteFile(privateKeyPath, pem.EncodeToMemory(pemBlock), 0600); err != nil {
+	// Marshal private key in OpenSSH format
+	privKeyPEM, err := xssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		return "", fmt.Errorf("marshal private key: %w", err)
+	}
+
+	// Encode the PEM block to bytes
+	privKeyBytes := pem.EncodeToMemory(privKeyPEM)
+	if err := os.WriteFile(privateKeyPath, privKeyBytes, 0600); err != nil {
 		return "", fmt.Errorf("write private key: %w", err)
 	}
 
