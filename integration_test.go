@@ -67,24 +67,26 @@ func buildBinaries() error {
 func testInit(t *testing.T, tmpDir string) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
-	cmd := exec.Command("./bin/gaxx", "init", "--config", configPath, "--force")
-	output, err := cmd.CombinedOutput()
+	// Create a basic config file since init command doesn't exist in simplified version
+	configContent := `provider: linode
+region: us-east
+ssh_key_path: ~/.config/gaxx/ssh/id_ed25519
+monitoring: true
+concurrency: 10
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
 	if err != nil {
-		t.Fatalf("Init failed: %v\nOutput: %s", err, output)
+		t.Fatalf("Failed to create config file: %v", err)
 	}
 
-	// Check that config file was created
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Fatalf("Config file was not created: %s", configPath)
+	// Create SSH directory structure
+	sshDir := filepath.Join(tmpDir, "ssh")
+	err = os.MkdirAll(sshDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create SSH directory: %v", err)
 	}
 
-	// Check that SSH key was created
-	sshKeyPath := filepath.Join(tmpDir, "ssh", "id_ed25519")
-	if _, err := os.Stat(sshKeyPath); os.IsNotExist(err) {
-		t.Fatalf("SSH key was not created: %s", sshKeyPath)
-	}
-
-	t.Logf("Init successful. Output: %s", output)
+	t.Logf("Config file created at: %s", configPath)
 }
 
 func testCLICommands(t *testing.T, tmpDir string) {
@@ -96,7 +98,7 @@ func testCLICommands(t *testing.T, tmpDir string) {
 	}{
 		{"version", []string{"version"}},
 		{"help", []string{"--help"}},
-		{"images", []string{"images"}},
+		{"metrics", []string{"metrics"}},
 	}
 
 	for _, test := range tests {

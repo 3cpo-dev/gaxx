@@ -56,3 +56,50 @@ secrets.env
 # Temporary files
 tmp/
 temp/
+
+# Go specific
+*.prof
+*.pprof
+coverage.html
+coverage.out
+*.cover
+
+# Process files
+*.pid
+*.lock
+*.sock
+
+# Cache directories
+.cache/
+cache/
+
+# User-specific config directories
+~/.config/gaxx/
+.config/gaxx/
+
+# Test artifacts
+test-results/
+test-output/
+
+# Documentation builds
+docs/_build/
+site/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Archive files
+*.tar
+*.tar.gz
+*.zip
+*.rar
+
+# Coverage reports
+coverage/
+*.coverprofile
+
+# Profiling data
+*.prof
+*.pprof

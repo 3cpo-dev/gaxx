@@ -10,9 +10,9 @@ make build
 echo 'export PATH="/path/to/gaxx/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 
-# 2. Configure providers
-export LINODE_TOKEN="your-token"
-export VULTR_API_KEY="your-key"
+# 2. Set up credentials
+export LINODE_TOKEN="your-linode-token"
+export VULTR_API_KEY="your-vultr-key"
 
 # 3. Create and use fleet
 gaxx spawn --provider linode --count 3 --name myfleet
@@ -35,7 +35,7 @@ gaxx delete myfleet
 
 ### Environment Variables
 ```bash
-# Cloud provider credentials
+# Cloud provider credentials (required)
 LINODE_TOKEN=your-linode-token
 VULTR_API_KEY=your-vultr-key
 

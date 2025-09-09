@@ -131,7 +131,7 @@ func newRunCmd() *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			// Use Linode as default provider for now
+			// Use Linode as default
 			p := core.NewLinodeProvider(config.Token)
 			gaxx := core.NewGaxx(config, p)
 
@@ -189,7 +189,7 @@ func newListCmd() *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			// Use Linode as default provider for now
+			// Use Linode as default provider
 			p := core.NewLinodeProvider(config.Token)
 			gaxx := core.NewGaxx(config, p)
 
@@ -311,6 +311,7 @@ func newVersionCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Gaxx v%s\n", version)
 			fmt.Printf("Build Date: %s\n", buildDate)
+
 			if commit != "" {
 				fmt.Printf("Commit: %s\n", commit)
 			}
