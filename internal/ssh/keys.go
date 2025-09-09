@@ -41,14 +41,19 @@ func GenerateEd25519Keypair(privateKeyPath string) (publicAuthorized string, err
 
 // LoadPrivateKeySigner reads an OpenSSH/PEM private key file and returns an ssh.Signer.
 func LoadPrivateKeySigner(privateKeyPath string) (xssh.Signer, error) {
-    data, err := os.ReadFile(privateKeyPath)
-    if err != nil {
-        return nil, fmt.Errorf("read private key: %w", err)
-    }
-    // Try to parse as OpenSSH/PEM without passphrase
-    signer, err := xssh.ParsePrivateKey(data)
-    if err != nil {
-        return nil, fmt.Errorf("parse private key: %w", err)
-    }
-    return signer, nil
+	data, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("read private key: %w", err)
+	}
+	// Try to parse as OpenSSH/PEM without passphrase
+	signer, err := xssh.ParsePrivateKey(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse private key: %w", err)
+	}
+	return signer, nil
+}
+
+// MarshalAuthorized returns authorized_keys text for given signer public key.
+func MarshalAuthorized(signer xssh.Signer) []byte {
+	return xssh.MarshalAuthorizedKey(signer.PublicKey())
 }

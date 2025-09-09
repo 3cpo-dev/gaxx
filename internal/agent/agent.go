@@ -128,6 +128,12 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	s.routes(mux)
 	s.srv = &http.Server{Addr: addr, Handler: mux}
+	// Optional TLS
+	cert := os.Getenv("GAXX_AGENT_TLS_CERT")
+	key := os.Getenv("GAXX_AGENT_TLS_KEY")
+	if cert != "" && key != "" {
+		return s.srv.ListenAndServeTLS(cert, key)
+	}
 	return s.srv.ListenAndServe()
 }
 
