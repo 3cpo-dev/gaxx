@@ -124,3 +124,5 @@ make install-user   # User install
 ## License
 
 Apache-2.0
+
+**Note**: This is a personal project and is provided as-is; use at your own risk.
